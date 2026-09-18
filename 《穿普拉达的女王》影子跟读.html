@@ -281,6 +281,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
       <div class="s-meta">
         <span class="badge" id="sIdx">—</span>
         <span id="sTime">—</span>
+        <span class="badge" id="sSeg" style="display:none"></span>
         <span id="sSpeakers"></span>
       </div>
       <div class="s-en" id="sEn"></div>
@@ -391,10 +392,14 @@ function tokenizeWords(en){
 
 /* ---------------- 当前句渲染 ---------------- */
 function renderCurrent(i){
-  document.querySelectorAll('.w.active, .blk.active').forEach(el => el.classList.remove('active'));
+  clearHL();
   const s = S[i];
   $('#sIdx').textContent = (i+1) + ' / ' + S.length;
   $('#sTime').textContent = timeFmt(s.start) + ' – ' + timeFmt(s.end) + ' · ' + (s.end-s.start).toFixed(1) + 's';
+  let segTxt = '';
+  for (const sg of SEGS){ if (i >= sg.firstIdx && i <= sg.lastIdx){ segTxt = '片段 ' + String(sg.id + 1).padStart(2, '0') + ' · ' + sg.name; break; } }
+  const segEl = $('#sSeg');
+  if (segTxt){ segEl.textContent = segTxt; segEl.style.display = ''; } else { segEl.style.display = 'none'; }
   const speakers = splitSpeakers(s.en);
   const enBox = $('#sEn'), zhBox = $('#sZh'), blkBox = $('#sBlocks');
   enBox.innerHTML = ''; zhBox.textContent = ''; blkBox.innerHTML = '';
@@ -551,6 +556,7 @@ function buildList(){
   }
   listEl.innerHTML = '';
   rowEls = [];
+  prevActiveRow = -1;
   const frag = document.createDocumentFragment();
   S.forEach((s, i) => {
     const row = document.createElement('div');
@@ -597,8 +603,11 @@ function jumpTo(i, play){
   audio.currentTime = S[i].start;
   if (play) playAudio();
 }
+let prevActiveRow = -1;
 function updateListActive(){
-  rowEls.forEach((r, i) => r.classList.toggle('active', i === activeIdx));
+  if (prevActiveRow >= 0 && rowEls[prevActiveRow]) rowEls[prevActiveRow].classList.remove('active');
+  if (activeIdx >= 0 && rowEls[activeIdx]) rowEls[activeIdx].classList.add('active');
+  prevActiveRow = activeIdx;
   if (activeIdx >= 0){
     const r = rowEls[activeIdx];
     if (r) scrollInto(listEl, r);
@@ -650,6 +659,7 @@ for (const k in modeBtn){
     for (const kk in modeBtn) modeBtn[kk].classList.toggle('on', kk === k);
     if (activeIdx >= 0) renderCurrent(activeIdx);
     buildList();
+    updateListActive();
   });
 }
 modeBtn['both'].classList.add('on');
@@ -694,20 +704,25 @@ function findActive(t){
   while (i > 0 && t < S[i].start) i--;
   return i;
 }
-/* 单词级高亮：字幕模式高亮词，无(方块)模式高亮方块 */
+/* 单词级高亮：字幕模式高亮词，无(方块)模式高亮方块
+   用 hlEls 缓存当前高亮元素，清除只需 O(1)，避免全 DOM 扫描造成卡顿 */
+let hlEls = [];
+function clearHL(){
+  for (const el of hlEls){ el.classList.remove('active'); }
+  hlEls = [];
+}
 function updateWord(k){
-  /* 先清除全局所有词高亮（防止切句/句末后旧行残留），再加亮当前词 */
-  document.querySelectorAll('.w.active, .blk.active').forEach(el => el.classList.remove('active'));
+  clearHL();
   if (k < 0) return;
   const box = (MODE === 'block') ? $('#sBlocks') : $('#sEn');
   if (box){
     const el = box.querySelector('[data-k="' + k + '"]');
-    if (el) el.classList.add('active');
+    if (el){ el.classList.add('active'); hlEls.push(el); }
   }
   const row = rowEls[activeIdx];
   if (row){
     const el2 = row.querySelector('[data-k="' + k + '"]');
-    if (el2) el2.classList.add('active');
+    if (el2){ el2.classList.add('active'); hlEls.push(el2); }
   }
 }
 audio.addEventListener('timeupdate', () => {
