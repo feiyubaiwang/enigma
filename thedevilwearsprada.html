@@ -85,6 +85,7 @@
   .stage{flex:1; overflow-y:auto; min-height:0; padding:34px 44px 20px}
   .video-box{flex:none;background:#000;display:flex;justify-content:center;border-bottom:1px solid var(--line);position:relative}
   .vid-loading{position:absolute;inset:0;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.06em;z-index:5}
+  .vid-loading.tappable{cursor:pointer;background:rgba(0,0,0,.68)}
   .video-box video{display:block;height:36vh;max-width:100%;aspect-ratio:2.35/1;object-fit:contain;background:#000}
   @media (max-width:900px){.video-box video{height:26vh}}
 
@@ -309,7 +310,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
 
 <main>
   <div class="left">
-    <div class="video-box"><video id="video" preload="metadata" playsinline></video><div id="vidLoading" class="vid-loading" style="display:none"><span>视频加载中…</span></div></div>
+    <div class="video-box"><video id="video" preload="metadata" playsinline></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
     <div class="stage" id="stage">
       <div class="s-meta">
         <span class="badge" id="sIdx">—</span>
@@ -469,7 +470,9 @@ function renderCurrent(i){
   $('#sIdx').textContent = (i+1) + ' / ' + S.length;
   $('#sTime').textContent = timeFmt(s.start) + ' – ' + timeFmt(s.end) + ' · ' + (s.end-s.start).toFixed(1) + 's';
   let segTxt = '';
-  for (const sg of SEGS){ if (i >= sg.firstIdx && i <= sg.lastIdx){ segTxt = '片段 ' + String(sg.id + 1).padStart(2, '0') + ' · ' + sg.name; break; } }
+  if (typeof SEGS !== 'undefined'){
+    for (const sg of SEGS){ if (i >= sg.firstIdx && i <= sg.lastIdx){ segTxt = '片段 ' + String(sg.id + 1).padStart(2,'0') + ' · ' + sg.name; break; } }
+  }
   const segEl = $('#sSeg');
   if (segTxt){ segEl.textContent = segTxt; segEl.style.display = ''; } else { segEl.style.display = 'none'; }
   const speakers = splitSpeakers(s.en);
@@ -683,27 +686,104 @@ function buildList(){
   }
   chunk();
 }
+/* ---------------- 定位播放（统一状态机） ----------------
+   慢网/移动端/视频源异常的兼容要点：
+   1) 只在视频源缺失时设置一次 src，绝不反复 load/unload（保留浏览器缓冲）；
+   2) 先等 metadata，再 seek，等定位“真正落到目标句”后才 play()
+      —— seek 尚未完成就 play()，部分浏览器会把播放位置重置到片头/片尾；
+   3) 播放后 1 秒内校验实际时间点，发现被异常重置到片头/片尾则自动重试一次；
+   4) 仍失败则停在目标句并给出可点按的提示，绝不假装从头播放或黑屏。 */
+let seekSeq = 0;
+const _delay = ms => new Promise(res => setTimeout(res, ms));
+function mediaReady(){ return audio.readyState >= 1 && isFinite(audio.duration); }
+function atTime(t, tol){ return Math.abs(audio.currentTime - t) <= (tol || 2.5); }
+/* 时间点是否被浏览器异常重置到了片头/片尾（视频源损坏时的典型表现） */
+function jumpedToEdge(target){
+  const t = audio.currentTime, d = isFinite(audio.duration) ? audio.duration : Infinity;
+  return (t < 2 && target > 5) || (isFinite(d) && d - t < 2 && target < d - 10);
+}
 function jumpTo(i, play){
   i = Math.max(0, Math.min(S.length-1, i));
   activeIdx = i;
   updateListActive();
   renderCurrent(i);
-  if (!audio.src && !audio.currentSrc){
-    // 视频源被清空过（离开界面时）：重新加载后再定位播放
-    tryLoadAudio();
-    let done = false;
-    const onReady = () => {
-      if (done) return; done = true;
-      audio.removeEventListener('loadedmetadata', onReady);
-      audio.removeEventListener('canplay', onReady);
-      try{ audio.currentTime = S[i].start; }catch(e){}
-      if (play) audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{ setPlayBtn(false); });
-    };
-    audio.addEventListener('loadedmetadata', onReady);
-    audio.addEventListener('canplay', onReady);
-    return;
+  armSeek(i, !!play, ++seekSeq, 0);
+}
+async function armSeek(i, play, seq, attempt){
+  ensureSrc();
+  /* 校正显示：异常 EOF 时 timeupdate 可能已把当前句带到末句 */
+  if (activeIdx !== i){ activeIdx = i; updateListActive(); renderCurrent(i); }
+  try{
+    if (!mediaReady()){
+      showVidLoading('视频加载中…', true);
+      const t0 = Date.now();
+      while (!mediaReady()){
+        if (seq !== seekSeq) return;
+        if (Date.now() - t0 > 20000){ showVidLoading('视频加载较慢，点按重试', true); return; }
+        await _delay(120);
+      }
+    }
+    if (seq !== seekSeq) return;
+    const target = S[i].start;
+    showVidLoading(play ? '定位中…' : '视频加载中…', true);
+    try{ audio.currentTime = target; }catch(e){}
+    /* 等定位真正落到目标句且有数据（部分浏览器 seeked 触发时数据还没到） */
+    let settled = atTime(target) && audio.readyState >= 2 && !audio.seeking;
+    let edge = !settled && !audio.seeking && jumpedToEdge(target);
+    for (let n = 0; !settled && !edge && n < 100; n++){
+      if (seq !== seekSeq) return;
+      await _delay(100);
+      settled = atTime(target) && audio.readyState >= 2 && !audio.seeking;
+      edge = !settled && !audio.seeking && jumpedToEdge(target);
+    }
+    if (edge){
+      if (attempt < 1){ if (seq === seekSeq) armSeek(i, play, seq, attempt + 1); }
+      else {
+        try{ audio.pause(); audio.currentTime = target; }catch(e){}
+        setPlayBtn(false);
+        showVidLoading('该片段视频源异常，点按重试', true);
+      }
+      return;
+    }
+    if (!settled){
+      if (attempt < 1){ if (seq === seekSeq) armSeek(i, play, seq, attempt + 1); }
+      else showVidLoading('视频加载较慢，点按重试', true);
+      return;
+    }
+    if (!play){ if (seq === seekSeq) hideVidLoading(); return; }
+    const good = await playAndVerify(target, seq);
+    if (seq !== seekSeq) return;
+    if (good){ hideVidLoading(); return; }
+    if (attempt < 1){ armSeek(i, true, seq, attempt + 1); return; }
+    /* 最终失败：停回目标句（暂停），给出提示，绝不从头播放 */
+    try{ audio.pause(); audio.currentTime = target; }catch(e){}
+    setPlayBtn(false);
+    showVidLoading('该片段视频源异常，点按重试', true);
+  }catch(e){
+    if (seq === seekSeq) showVidLoading('视频加载较慢，点按重试', true);
   }
-  ensureSeek(i, play);
+}
+async function playAndVerify(target, seq){
+  try{ await audio.play(); }
+  catch(e){
+    /* 移动端自动播放被拦截 / 慢网：提示用户在手势内点按继续 */
+    if (seq === seekSeq) showVidLoading('点按屏幕继续播放', true);
+    return false;
+  }
+  setPlayBtn(true);
+  /* 播放后观察约 1 秒：正常应停留在目标句附近；
+     若瞬间回到片头或冲到片尾，说明定位被视频源/管线重置，判定失败 */
+  for (let n = 0; n < 10; n++){
+    await _delay(100);
+    if (seq !== seekSeq) return true;
+    if (audio.paused || audio.ended) break;
+  }
+  if (jumpedToEdge(target)){
+    try{ audio.pause(); }catch(e){}
+    setPlayBtn(false);
+    return false;
+  }
+  return true;
 }
 function closeListDrawer(){
   if (window.innerWidth > 820) return;
@@ -731,24 +811,32 @@ function scrollInto(container, el){
 }
 
 /* ---------------- 播放控制 ---------------- */
-let pendingSeek = null;   // {i, play} 等视频 metadata 就绪后自动定位
+let pendingSeek = null;   // 兼容保留（metadata 未就绪时的待定位标记）
 function hideVidLoading(){ try{ $('#vidLoading').style.display = 'none'; }catch(e){} }
-function showVidLoading(){ try{ $('#vidLoading').style.display = 'flex'; }catch(e){} }
-function ensureSeek(i, play){
-  // metadata 未就绪：先显示“视频加载中”，就绪后自动定位播放，避免从 0:00 播
-  if (audio.readyState < 1){ pendingSeek = {i:i, play:!!play}; showVidLoading(); return; }
-  hideVidLoading();
-  try{ audio.currentTime = S[i].start; }catch(e){}
-  if (play) playAudio();
+function showVidLoading(txt, tappable){
+  try{
+    if (txt) $('#vidLoadingTxt').textContent = txt;
+    const el = $('#vidLoading');
+    el.style.display = 'flex';
+    el.classList.toggle('tappable', !!tappable);
+  }catch(e){}
 }
+/* 覆盖层点按：在用户手势内重新定位播放（同时解决移动端自动播放限制） */
+$('#vidLoading').addEventListener('click', () => {
+  if (activeIdx >= 0) jumpTo(activeIdx, true);
+});
 function playAudio(){
-  if (!audio.src && !audio.currentSrc){ tryLoadAudio(); return; }
-  if (audio.readyState < 1){ pendingSeek = {i: activeIdx >= 0 ? activeIdx : 0, play:true}; showVidLoading(); return; }
+  ensureSrc();
+  if (!mediaReady()){
+    if (activeIdx >= 0){ armSeek(activeIdx, true, ++seekSeq, 0); return; }
+    showVidLoading('视频加载中…', true);
+    return;
+  }
   // 跳过环境音开启时，从片头(第1句之前)开始播放会直接跳到第1句对白
   if (SKIP_GAP && !previewing && !REPEAT && audio.currentTime < S[0].start){
     audio.currentTime = S[0].start;
   }
-  audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{});
+  audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{ showVidLoading('点按屏幕继续播放', true); });
 }
 function pauseAudio(){ audio.pause(); setPlayBtn(false); }
 var ICON_PLAY = '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
@@ -897,27 +985,18 @@ audio.addEventListener('error', () => {
   if (!audio.currentSrc && !audio.src){ $('#audioMiss').style.display = 'flex'; }
 });
 var VIDEO_URL = 'https://thedevilwearsprada.oss-cn-shanghai.aliyuncs.com/The%20Devil%20Wears%20Prada%202006.mp4';
-/* 视频源：阿里云 OSS（国内直链，已实测 HEAD 200 / Range 206 / 357236435B） */
-function tryLoadAudio(){
-  const s = document.createElement('script');
-  if (location.protocol === 'file:'){
-    // 本地打开：相对路径加载同目录视频
-    audio.src = DATA.meta.audio + '?' + Date.now();
-  } else {
-    // 线上部署：从 VIDEO_URL 加载视频
-    audio.src = VIDEO_URL + '?' + Date.now();
-  }
-  audio.load();
+/* 视频源：本地打开用同目录文件，线上部署用阿里云 OSS。
+   src 全程只设置一次、不加时间戳：让浏览器缓存/缓冲可以复用，
+   避免每次进入片段都重新下载整部电影。 */
+function mediaURL(){
+  return location.protocol === 'file:' ? DATA.meta.audio : VIDEO_URL;
 }
-/* 视频元数据就绪：若播放/跳转在等加载，则自动定位到目标句并播放 */
-audio.addEventListener('loadedmetadata', () => {
-  if (pendingSeek){
-    const p = pendingSeek; pendingSeek = null;
-    hideVidLoading();
-    try{ audio.currentTime = S[p.i].start; }catch(e){}
-    if (p.play) playAudio();
-  } else { hideVidLoading(); }
-});
+function ensureSrc(){
+  if (audio.getAttribute('src')) return;
+  audio.src = mediaURL();
+}
+function tryLoadAudio(){ ensureSrc(); }
+audio.addEventListener('loadedmetadata', () => { hideVidLoading(); });
 audio.addEventListener('error', () => { try{ $('#audioMiss').style.display = 'flex'; }catch(e){} });
 $('#fileAudio').addEventListener('change', ev => {
   const f = ev.target.files[0];
@@ -929,9 +1008,8 @@ let compareQueue = 0; // 0=无 1=正在放原声 2=等放跟读
 $('#btnPlayOrig').addEventListener('click', () => {
   if (activeIdx < 0) return;
   previewing = true; compareQueue = 0;
-  audio.currentTime = S[activeIdx].start;
   audio.playbackRate = 1.0;
-  playAudio();
+  armSeek(activeIdx, true, ++seekSeq, 0);
 });
 $('#btnPlayMine').addEventListener('click', playMine);
 function playMine(){
@@ -944,10 +1022,9 @@ function playMine(){
 $('#btnCompare').addEventListener('click', () => {
   if (activeIdx < 0 || !recURL()) return;
   compareQueue = 1;
-  audio.currentTime = S[activeIdx].start;
   audio.playbackRate = 1.0;
   previewing = true;
-  playAudio();
+  armSeek(activeIdx, true, ++seekSeq, 0);
 });
 
 /* ---------------- 录音 ---------------- */
@@ -1022,7 +1099,7 @@ window.addEventListener('scroll', () => {
     document.body.scrollTop = 0;
   }
 }, {passive:true});
-init();
+/* init() 延后到下一个 <script>：需要其中的 SEGS 等数据先完成定义 */
 </script>
 <script>
 
@@ -1052,25 +1129,22 @@ function renderNav(){
 function navEnter(si){
   const seg = SEGS[si];
   try { pauseAudio(); } catch(e){}
-  resumeVideo();
   navView.style.display = 'none';
   document.getElementById('audioMiss').style.display = 'none';
+  /* 用户手势内触发：既完成懒加载首取，也满足移动端自动播放策略 */
   jumpTo(seg.firstIdx, true);
   window.scrollTo(0, 0);
 }
+/* 只暂停、不卸载视频源：src 常驻可让再次进入片段秒开并复用缓冲 */
 function stopVideo(){
+  try{ seekSeq++; }catch(e){}
   try{
     audio.pause();
-    audio.removeAttribute('src');
-    audio.load();
     setPlayBtn(false);
   }catch(e){}
   pendingSeek = null; hideVidLoading();
-  try{ const v = document.getElementById('video'); if (v) v.style.display = 'none'; }catch(e){}
 }
-function resumeVideo(){
-  try{ const v = document.getElementById('video'); if (v) v.style.display = ''; }catch(e){}
-}
+function resumeVideo(){ /* 兼容保留：视频源不再被卸载，无需恢复 */ }
 function navBack(){
   stopVideo();
   hideCard && hideCard();
@@ -1096,9 +1170,11 @@ jumpTo = function(i, play){
   closeListDrawer();
   return _origJump(i, play);
 };
-/* 离开页面/浏览器返回时停止视频，避免跳出跟读界面后仍在播放 */
+/* 离开页面/浏览器返回时暂停播放即可（视频源常驻不卸载） */
 window.addEventListener('pagehide', () => { try{ stopVideo(); }catch(e){} });
 renderNav();
+/* SEGS 等全部数据/函数就绪后再初始化（此前 init 过早调用会因 SEGS 未定义而中断） */
+init();
 
 </script>
 </body>
