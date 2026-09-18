@@ -847,8 +847,8 @@ audio.addEventListener('pause', () => setPlayBtn(false));
 audio.addEventListener('error', () => {
   if (!audio.currentSrc && !audio.src){ $('#audioMiss').style.display = 'flex'; }
 });
-var VIDEO_URL = 'https://media.githubusercontent.com/media/feiyubaiwang/enigma/main/The%20Devil%20Wears%20Prada%202006.mp4';
-/* 换国内对象存储时，只需把 VIDEO_URL 改成你的视频直链即可 */
+var VIDEO_URL = 'https://thedevilwearsprada.oss-cn-shanghai.aliyuncs.com/The%20Devil%20Wears%20Prada%202006.mp4';
+/* 视频源：阿里云 OSS（国内直链，已实测 HEAD 200 / Range 206 / 357236435B） */
 function tryLoadAudio(){
   const s = document.createElement('script');
   if (location.protocol === 'file:'){
