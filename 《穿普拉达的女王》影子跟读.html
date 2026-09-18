@@ -792,8 +792,13 @@ audio.addEventListener('error', () => {
 });
 function tryLoadAudio(){
   const s = document.createElement('script');
-  // 相对路径加载
-  audio.src = DATA.meta.audio + '?' + Date.now();
+  if (location.protocol === 'file:'){
+    // 本地打开：相对路径加载同目录视频
+    audio.src = DATA.meta.audio + '?' + Date.now();
+  } else {
+    // 线上部署：从 GitHub LFS 媒体服务加载视频（Vercel 等静态托管不拉取 LFS）
+    audio.src = 'https://media.githubusercontent.com/media/feiyubaiwang/enigma/main/The%20Devil%20Wears%20Prada%202006.mp4?' + Date.now();
+  }
   audio.load();
 }
 $('#fileAudio').addEventListener('change', ev => {
