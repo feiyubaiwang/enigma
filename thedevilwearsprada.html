@@ -3,7 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>课后放映·穿普拉达的女王</title>
+<title>《穿普拉达的女王》电影英语跟读 · 49个微片段1374句台词｜课后放映</title>
+<meta name="description" content="《穿普拉达的女王》(The Devil Wears Prada) 电影英语影子跟读：49 个微片段、1374 句中英台词，逐句精读、0.6/0.8/1.0 倍速、录音对照，练职场英语听力与口语。">
+<meta name="keywords" content="穿普拉达的女王,时尚女魔头,The Devil Wears Prada,电影学英语,职场英语,影子跟读,英语跟读,逐句精听,中英字幕,英语口语练习">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://enigma.feiyubaiwang.com/thedevilwearsprada.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="课后放映">
+<meta property="og:title" content="《穿普拉达的女王》电影英语跟读 · 49个微片段1374句台词｜课后放映">
+<meta property="og:description" content="49 个微片段、1374 句中英台词，逐句精读、倍速播放、影子跟读与录音对照。">
+<meta property="og:url" content="https://enigma.feiyubaiwang.com/thedevilwearsprada.html">
+<meta property="og:image" content="https://enigma.feiyubaiwang.com/poster-prada.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="《穿普拉达的女王》电影英语跟读｜课后放映">
+<meta name="twitter:description" content="49 个微片段、1374 句中英台词，逐句精读与影子跟读。">
+<meta name="twitter:image" content="https://enigma.feiyubaiwang.com/poster-prada.png">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"></noscript>
 <style>
@@ -1132,13 +1146,16 @@ function renderNav(){
 function navEnter(si){
   const seg = SEGS[si];
   try { pauseAudio(); } catch(e){}
+  resumeVideo();
   navView.style.display = 'none';
   document.getElementById('audioMiss').style.display = 'none';
   /* 用户手势内触发：既完成懒加载首取，也满足移动端自动播放策略 */
   jumpTo(seg.firstIdx, true);
   window.scrollTo(0, 0);
 }
-/* 只暂停、不卸载视频源：src 常驻可让再次进入片段秒开并复用缓冲 */
+/* 只暂停、不卸载视频源：src 常驻可让再次进入片段秒开并复用缓冲。
+   但必须 display:none 隐藏 video —— Android Chrome 的视频是原生硬件层，
+   会穿透 z-index:9999 的导航层残留在画面上。 */
 function stopVideo(){
   try{ seekSeq++; }catch(e){}
   try{
@@ -1146,8 +1163,11 @@ function stopVideo(){
     setPlayBtn(false);
   }catch(e){}
   pendingSeek = null; hideVidLoading();
+  try{ const v = document.getElementById('video'); if (v) v.style.display = 'none'; }catch(e){}
 }
-function resumeVideo(){ /* 兼容保留：视频源不再被卸载，无需恢复 */ }
+function resumeVideo(){
+  try{ const v = document.getElementById('video'); if (v) v.style.display = ''; }catch(e){}
+}
 function navBack(){
   stopVideo();
   hideCard && hideCard();
