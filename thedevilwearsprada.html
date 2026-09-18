@@ -286,7 +286,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
         <h1 class="nav-title">穿普拉达的女王<span class="sub">看电影学习职场英语</span></h1>
 <div class="nav-stats">
           <div><b id="navCount">49</b>个微片段</div>
-          <div><b>1373</b>句台词</div>
+          <div><b id="navSentCount">1374</b>句台词</div>
           <div><b>109</b>分钟</div>
           </div>
       </div>
@@ -1114,6 +1114,9 @@ function segDurText(seg){
   return (m ? m + '分' : '') + s + '秒';
 }
 function renderNav(){
+  /* 统计数字一律由数据生成，避免手写数字与实际台词数漂移 */
+  $('#navCount').textContent = SEGS.length;
+  $('#navSentCount').textContent = S.length;
   navGrid.innerHTML = '';
   SEGS.forEach(function(seg){
     const b = document.createElement('button');
