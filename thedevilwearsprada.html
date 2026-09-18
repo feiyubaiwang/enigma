@@ -68,8 +68,14 @@
 
   /* ---------- 主体两栏 ---------- */
   main{display:flex; flex:1; min-height:0}
-  .left{flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; border-right:1px solid var(--line)}
-  .right{width:400px; flex:none; display:flex; flex-direction:column; min-height:0}
+  .left{flex:1; min-width:0; min-height:0; display:flex; flex-direction:column}
+  .right{position:fixed; top:0; right:0; bottom:0; width:400px; z-index:80; display:flex; flex-direction:column; min-height:0; background:#fff; border-left:1px solid var(--line); box-shadow:-10px 0 28px rgba(0,0,0,.10); transform:translateX(105%); transition:transform .25s ease}
+  .right.open{transform:none}
+  .drawer-toggle{position:fixed; right:0; top:50%; transform:translateY(-50%); z-index:81; display:flex; flex-direction:column; align-items:center; gap:3px; padding:12px 7px; background:#fff; border:1px solid var(--line); border-right:0; border-radius:10px 0 0 10px; cursor:pointer; color:var(--ink-2); font-size:11px; font-weight:600; box-shadow:-2px 0 10px rgba(0,0,0,.05); transition:.2s}
+  .drawer-toggle:hover{color:#A61F38}
+  .drawer-toggle.open{background:#A61F38; border-color:#A61F38; color:#fff}
+  .sg-txt{font-size:11px; font-weight:600; white-space:nowrap}
+  .btn.icon.skip{width:auto; padding:0 10px; gap:4px; display:inline-flex; align-items:center}
   .right-head{padding:12px 16px; border-bottom:1px solid var(--line); font-size:12px; color:var(--ink-3);
     display:flex; justify-content:space-between; align-items:center}
   .right-head b{color:var(--ink-2); font-weight:600}
@@ -164,7 +170,7 @@
   footer kbd{background:#f4f4f4; border:1px solid #ddd; border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:11px; font-family:inherit}
 
   @media (max-width:1150px){
-    .right{width:340px} .stage{padding:24px 24px 16px}
+    .stage{padding:24px 24px 16px}
     header{flex-wrap:wrap; height:auto; padding:8px 12px; gap:6px 10px}
     .brand{width:100%; flex-wrap:wrap}
     .spacer{display:none}
@@ -173,7 +179,7 @@
     .ctrl{gap:6px}
     main{flex-direction:column}
     .left{min-height:44vh; border-right:0; border-bottom:1px solid var(--line)}
-    .right{width:100%; flex:1}
+    .right{width:86vw; max-width:420px}
     footer{display:none}
   }
 
@@ -332,16 +338,18 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
     <div id="list"></div>
   </div>
 </main>
+<button class="drawer-toggle" id="drawerToggle" title="打开台词列表"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>台词</span></button>
+
 
 <div class="playerbar" id="playerbar">
   <div class="progressbar" id="prog"><div class="fill" id="progFill"></div><div class="knob" id="progKnob"></div></div>
   <div class="pbar-main">
     <div class="pbar-play">
-      <button class="btn icon" id="btnPrev" title="上一句 (↑)">⏪</button>
-      <button class="btn play" id="btnPlay" title="播放/暂停 (空格)">▶</button>
-      <button class="btn icon" id="btnNext" title="下一句 (↓)">⏩</button>
-      <button class="btn icon" id="btnRepeat" title="重复当前句 (R)">↻</button>
-      <button class="btn icon skip" id="btnSkipGap" title="顺序播放时跳过两句之间的环境音/配乐">⏩⏩</button>
+      <button class="btn icon" id="btnPrev" title="上一句 (↑)"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 4.5v15L8.5 12 19 4.5z"/><rect x="4.5" y="4" width="2.6" height="16" rx="1.2"/></svg></button>
+      <button class="btn play" id="btnPlay" title="播放/暂停 (空格)"><svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+      <button class="btn icon" id="btnNext" title="下一句 (↓)"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 4.5v15L15.5 12 5 4.5z"/><rect x="16.9" y="4" width="2.6" height="16" rx="1.2"/></svg></button>
+      <button class="btn icon" id="btnRepeat" title="重复当前句 (R)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+      <button class="btn icon skip" id="btnSkipGap" title="顺序播放时跳过两句之间的环境音/配乐"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M13.5 4.5v15L23 12 13.5 4.5z"/><path d="M2.5 4.5v15L12 12 2.5 4.5z"/><rect x="16" y="3.5" width="2.4" height="17" rx="1.1"/></svg><span class="sg-txt">去背景音</span></button>
     </div>
     <div class="pbar-opts">
       <div class="ctrl"><span class="rate-label">倍速</span><div class="seg" id="segRate">
@@ -664,16 +672,27 @@ function jumpTo(i, play){
   if (!audio.src && !audio.currentSrc){
     // 视频源被清空过（离开界面时）：重新加载后再定位播放
     tryLoadAudio();
+    let done = false;
     const onReady = () => {
+      if (done) return; done = true;
       audio.removeEventListener('loadedmetadata', onReady);
-      audio.currentTime = S[i].start;
-      if (play) audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{});
+      audio.removeEventListener('canplay', onReady);
+      try{ audio.currentTime = S[i].start; }catch(e){}
+      if (play) audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{ setPlayBtn(false); });
     };
     audio.addEventListener('loadedmetadata', onReady);
+    audio.addEventListener('canplay', onReady);
     return;
   }
   audio.currentTime = S[i].start;
   if (play) playAudio();
+}
+function closeListDrawer(){
+  if (window.innerWidth > 820) return;
+  const dr = document.querySelector('.right');
+  const dt = document.getElementById('drawerToggle');
+  if (dr) dr.classList.remove('open');
+  if (dt) dt.classList.remove('open');
 }
 let prevActiveRow = -1;
 function updateListActive(){
@@ -703,7 +722,9 @@ function playAudio(){
   audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{});
 }
 function pauseAudio(){ audio.pause(); setPlayBtn(false); }
-function setPlayBtn(on){ $('#btnPlay').textContent = on ? '⏸' : '▶'; }
+var ICON_PLAY = '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+var ICON_PAUSE = '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><rect x="6" y="4" width="4.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.2"/></svg>';
+function setPlayBtn(on){ $('#btnPlay').innerHTML = on ? ICON_PAUSE : ICON_PLAY; }
 $('#btnPlay').addEventListener('click', () => { audio.paused ? playAudio() : pauseAudio(); });
 $('#btnPrev').addEventListener('click', () => jumpTo(activeIdx<=0 ? 0 : activeIdx-1, true));
 $('#btnNext').addEventListener('click', () => jumpTo(activeIdx>=S.length-1 ? activeIdx : activeIdx+1, true));
@@ -711,7 +732,6 @@ $('#btnNext').addEventListener('click', () => jumpTo(activeIdx>=S.length-1 ? act
 $('#btnRepeat').addEventListener('click', () => {
   REPEAT = !REPEAT;
   $('#btnRepeat').classList.toggle('primary', REPEAT);
-  $('#btnRepeat').textContent = REPEAT ? '↻ 重复中' : '↻ 重复本句';
 });
 
 /* 倍速 */
@@ -992,6 +1012,7 @@ function renderNav(){
 function navEnter(si){
   const seg = SEGS[si];
   try { pauseAudio(); } catch(e){}
+  resumeVideo();
   navView.style.display = 'none';
   document.getElementById('audioMiss').style.display = 'none';
   jumpTo(seg.firstIdx, true);
@@ -1004,6 +1025,10 @@ function stopVideo(){
     audio.load();
     setPlayBtn(false);
   }catch(e){}
+  try{ const v = document.getElementById('video'); if (v) v.style.display = 'none'; }catch(e){}
+}
+function resumeVideo(){
+  try{ const v = document.getElementById('video'); if (v) v.style.display = ''; }catch(e){}
 }
 function navBack(){
   stopVideo();
@@ -1013,6 +1038,23 @@ function navBack(){
 }
 
 document.getElementById('btnNav').addEventListener('click', navBack);
+/* 台词列表抽屉开关 */
+(function(){
+  const dt = document.getElementById('drawerToggle');
+  const dr = document.querySelector('.right');
+  if (dt && dr){
+    dt.addEventListener('click', function(){
+      const open = dr.classList.toggle('open');
+      dt.classList.toggle('open', open);
+    });
+  }
+})();
+/* 播放推进时（自动/手动跳句）移动端收起抽屉 */
+const _origJump = jumpTo;
+jumpTo = function(i, play){
+  closeListDrawer();
+  return _origJump(i, play);
+};
 /* 离开页面/浏览器返回时停止视频，避免跳出跟读界面后仍在播放 */
 window.addEventListener('pagehide', () => { try{ stopVideo(); }catch(e){} });
 renderNav();
