@@ -559,7 +559,7 @@ function buildList(){
   prevActiveRow = -1;
   const frag = document.createDocumentFragment();
   const total = S.length;
-  let i = 0, headAppended = false;
+  let i = 0;
   function buildRow(s, i){
     const row = document.createElement('div');
     row.className = 'row'; row.dataset.idx = i;
@@ -597,16 +597,11 @@ function buildList(){
     const t0 = performance.now();
     while (i < total && performance.now() - t0 < 8){
       frag.appendChild(buildRow(S[i], i));
-      rowEls.push(S[i]); // 占位，稍后替换为真实行
-      rowEls[i] = frag.lastChild;
+      rowEls.push(frag.lastChild);
       i++;
-      if (i === 80 && !headAppended){
-        listEl.appendChild(frag);
-        headAppended = true;
-      }
     }
     if (i >= total){
-      if (!headAppended) listEl.appendChild(frag);
+      listEl.appendChild(frag);
       $('#listCount').textContent = S.length;
       updateListActive();
       return;
