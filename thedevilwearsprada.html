@@ -83,7 +83,8 @@
 
   /* ---------- 当前句面板 ---------- */
   .stage{flex:1; overflow-y:auto; min-height:0; padding:34px 44px 20px}
-  .video-box{flex:none;background:#000;display:flex;justify-content:center;border-bottom:1px solid var(--line)}
+  .video-box{flex:none;background:#000;display:flex;justify-content:center;border-bottom:1px solid var(--line);position:relative}
+  .vid-loading{position:absolute;inset:0;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.06em;z-index:5}
   .video-box video{display:block;height:36vh;max-width:100%;aspect-ratio:2.35/1;object-fit:contain;background:#000}
   @media (max-width:900px){.video-box video{height:26vh}}
 
@@ -308,7 +309,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
 
 <main>
   <div class="left">
-    <div class="video-box"><video id="video" preload="metadata" playsinline></video></div>
+    <div class="video-box"><video id="video" preload="metadata" playsinline></video><div id="vidLoading" class="vid-loading" style="display:none"><span>视频加载中…</span></div></div>
     <div class="stage" id="stage">
       <div class="s-meta">
         <span class="badge" id="sIdx">—</span>
@@ -412,7 +413,25 @@ let previewing = false;  // 原声预览模式（句末停）
 let compareMode = false; // 对照播放中
 let curK = -1;   // 当前高亮词序号（单词级跟读高亮）
 let curWC = 0;   // 当前句渲染词数
-let recBlob = null, recURL = null, recState = null, mediaRec = null, recChunks = [];
+let recMap = {};   // 句 id -> {blob, url}，每句录音独立保存
+let recState = null, mediaRec = null, recChunks = [];
+function recURL(){ return recMap[activeIdx] ? recMap[activeIdx].url : null; }
+function refreshRecUI(){
+  if (activeIdx < 0) return;
+  const r = recMap[activeIdx];
+  if (r){
+    $('#recState').textContent = '已录 ' + (r.blob.size/1024).toFixed(0) + ' KB';
+    $('#btnRec').textContent = '● 重新录音';
+    $('#btnPlayOrig').disabled = false;
+    $('#btnPlayMine').disabled = false;
+    $('#btnCompare').disabled = false;
+  } else {
+    $('#recState').textContent = '未录音';
+    $('#btnRec').textContent = '● 开始录音';
+    $('#btnPlayMine').disabled = true;
+    $('#btnCompare').disabled = true;
+  }
+}
 
 /* ---------------- 工具 ---------------- */
 function fmt(sec){
@@ -527,6 +546,7 @@ function renderCurrent(i){
     d.style.display = 'none';
     notes.appendChild(d);
   }
+  refreshRecUI();
 }
 function showChipDetail(ii, chipEl){
   const d = $('#chipd');
@@ -683,8 +703,7 @@ function jumpTo(i, play){
     audio.addEventListener('canplay', onReady);
     return;
   }
-  audio.currentTime = S[i].start;
-  if (play) playAudio();
+  ensureSeek(i, play);
 }
 function closeListDrawer(){
   if (window.innerWidth > 820) return;
@@ -712,8 +731,19 @@ function scrollInto(container, el){
 }
 
 /* ---------------- 播放控制 ---------------- */
+let pendingSeek = null;   // {i, play} 等视频 metadata 就绪后自动定位
+function hideVidLoading(){ try{ $('#vidLoading').style.display = 'none'; }catch(e){} }
+function showVidLoading(){ try{ $('#vidLoading').style.display = 'flex'; }catch(e){} }
+function ensureSeek(i, play){
+  // metadata 未就绪：先显示“视频加载中”，就绪后自动定位播放，避免从 0:00 播
+  if (audio.readyState < 1){ pendingSeek = {i:i, play:!!play}; showVidLoading(); return; }
+  hideVidLoading();
+  try{ audio.currentTime = S[i].start; }catch(e){}
+  if (play) playAudio();
+}
 function playAudio(){
   if (!audio.src && !audio.currentSrc){ tryLoadAudio(); return; }
+  if (audio.readyState < 1){ pendingSeek = {i: activeIdx >= 0 ? activeIdx : 0, play:true}; showVidLoading(); return; }
   // 跳过环境音开启时，从片头(第1句之前)开始播放会直接跳到第1句对白
   if (SKIP_GAP && !previewing && !REPEAT && audio.currentTime < S[0].start){
     audio.currentTime = S[0].start;
@@ -851,7 +881,7 @@ audio.addEventListener('timeupdate', () => {
     pauseAudio(); previewing = false;
     if (compareQueue === 1){
       compareQueue = 2;
-      setTimeout(() => { if (recURL){ playMine(); } }, 500);
+      setTimeout(() => { if (recURL()){ playMine(); } }, 500);
     }
   }
   // 重复本句
@@ -879,6 +909,16 @@ function tryLoadAudio(){
   }
   audio.load();
 }
+/* 视频元数据就绪：若播放/跳转在等加载，则自动定位到目标句并播放 */
+audio.addEventListener('loadedmetadata', () => {
+  if (pendingSeek){
+    const p = pendingSeek; pendingSeek = null;
+    hideVidLoading();
+    try{ audio.currentTime = S[p.i].start; }catch(e){}
+    if (p.play) playAudio();
+  } else { hideVidLoading(); }
+});
+audio.addEventListener('error', () => { try{ $('#audioMiss').style.display = 'flex'; }catch(e){} });
 $('#fileAudio').addEventListener('change', ev => {
   const f = ev.target.files[0];
   if (f){ audio.src = URL.createObjectURL(f); audio.load(); $('#audioMiss').style.display = 'none'; }
@@ -895,13 +935,14 @@ $('#btnPlayOrig').addEventListener('click', () => {
 });
 $('#btnPlayMine').addEventListener('click', playMine);
 function playMine(){
-  if (!recURL) return;
+  const u = recURL();
+  if (!u) return;
   pauseAudio();
-  const a = new Audio(recURL);
+  const a = new Audio(u);
   a.play();
 }
 $('#btnCompare').addEventListener('click', () => {
-  if (activeIdx < 0 || !recURL) return;
+  if (activeIdx < 0 || !recURL()) return;
   compareQueue = 1;
   audio.currentTime = S[activeIdx].start;
   audio.playbackRate = 1.0;
@@ -917,20 +958,20 @@ $('#btnRec').addEventListener('click', async () => {
   }
   try{
     const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    // 开始录音时自动暂停电影原声，避免混入环境声
+    try{ audio.pause(); setPlayBtn(false); }catch(e){}
     recChunks = [];
     mediaRec = new MediaRecorder(stream);
     mediaRec.ondataavailable = ev => { if (ev.data.size) recChunks.push(ev.data); };
     mediaRec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
-      recBlob = new Blob(recChunks, {type: mediaRec.mimeType || 'audio/webm'});
-      if (recURL) URL.revokeObjectURL(recURL);
-      recURL = URL.createObjectURL(recBlob);
+      const recBlob = new Blob(recChunks, {type: mediaRec.mimeType || 'audio/webm'});
+      const url = URL.createObjectURL(recBlob);
+      const old = recMap[activeIdx];
+      if (old && old.url) URL.revokeObjectURL(old.url);
+      recMap[activeIdx] = {blob: recBlob, url: url};
       recState = 'done';
-      $('#recState').textContent = '已录 ' + (recBlob.size/1024).toFixed(0) + ' KB';
-      $('#btnRec').textContent = '● 开始录音';
-      $('#btnPlayOrig').disabled = activeIdx < 0;
-      $('#btnPlayMine').disabled = false;
-      $('#btnCompare').disabled = activeIdx < 0;
+      refreshRecUI();
       pauseAudio();
     };
     recState = 'rec';
@@ -1024,6 +1065,7 @@ function stopVideo(){
     audio.load();
     setPlayBtn(false);
   }catch(e){}
+  pendingSeek = null; hideVidLoading();
   try{ const v = document.getElementById('video'); if (v) v.style.display = 'none'; }catch(e){}
 }
 function resumeVideo(){
