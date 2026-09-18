@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>课后放映</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap">
+<style>
+  :root{
+    --navy:#283059;
+    --navy-deep:#1c2340;
+    --ink:#eef1f8;
+    --muted:#a9b2cc;
+    --line:rgba(255,255,255,.10);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{
+    font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1100px 520px at 82% -12%, rgba(255,255,255,.07), transparent 62%),
+      radial-gradient(900px 560px at -8% 112%, rgba(255,255,255,.05), transparent 60%),
+      linear-gradient(168deg, #2c3560 0%, var(--navy) 46%, var(--navy-deep) 100%);
+    background-attachment:fixed;
+    min-height:100vh;
+    padding:64px 24px 48px;
+    text-align:center;
+  }
+  main{width:100%;max-width:860px;margin:0 auto;text-align:center}
+
+  /* ===== 标题区 ===== */
+  h1{
+    font-family:"Noto Serif SC","Songti SC","SimSun",serif;
+    font-weight:700;font-size:56px;letter-spacing:.12em;
+    color:#fff;line-height:1.15;
+  }
+  .sub{margin-top:16px;font-size:15px;color:var(--muted);letter-spacing:.5em;font-weight:300;text-indent:.5em}
+  .sub b{color:#dbe1f2;font-weight:500}
+
+  /* ===== 卡片区 ===== */
+  .cards{
+    margin-top:52px;
+    display:flex;justify-content:center;gap:36px;flex-wrap:wrap;
+  }
+  .card{
+    width:300px;
+    border-radius:16px;
+    overflow:hidden;
+    background:rgba(255,255,255,.04);
+    border:1px solid var(--line);
+    box-shadow:0 18px 44px rgba(10,14,32,.35);
+    text-decoration:none;color:inherit;
+    display:block;
+    transition:transform .28s ease, box-shadow .28s ease, border-color .28s ease;
+  }
+  .card:hover{
+    transform:translateY(-6px);
+    box-shadow:0 26px 60px rgba(10,14,32,.5);
+    border-color:rgba(255,255,255,.22);
+  }
+  .card .poster{
+    position:relative;aspect-ratio:3/4;background:#0c1020;overflow:hidden;
+  }
+  .card .poster img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s ease}
+  .card:hover .poster img{transform:scale(1.04)}
+  .card .poster::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg, rgba(20,25,48,0) 55%, rgba(20,25,48,.55) 100%);
+  }
+  .card .name{
+    padding:18px 16px 20px;
+    font-family:"Noto Serif SC","Songti SC","SimSun",serif;
+    font-size:18px;letter-spacing:.08em;font-weight:500;color:#fff;
+  }
+  /* 占位灰卡 */
+  .card.soon{
+    border-style:dashed;
+    background:rgba(255,255,255,.028);
+    box-shadow:none;cursor:default;
+  }
+  .card.soon:hover{
+    transform:none;box-shadow:none;border-color:var(--line);
+  }
+  .card.soon .poster{
+    display:flex;align-items:center;justify-content:center;
+    background:repeating-linear-gradient(45deg, rgba(255,255,255,.016) 0 12px, rgba(255,255,255,.006) 12px 24px);
+  }
+  .card.soon .soon-txt{color:rgba(255,255,255,.34);font-size:15px;letter-spacing:.24em;font-weight:300;line-height:2;text-indent:.24em}
+  .card.soon .name{color:rgba(255,255,255,.26)}
+
+  /* ===== 底部 ===== */
+  footer{margin-top:48px;font-size:11px;color:rgba(255,255,255,.28);letter-spacing:.3em;font-weight:300}
+
+  @media (max-width:640px){
+    h1{font-size:40px}
+    .sub{letter-spacing:.34em;font-size:13px;text-indent:.34em}
+    .cards{margin-top:40px;gap:26px}
+    .card{width:min(72vw,320px)}
+    footer{margin-top:40px}
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>课后放映</h1>
+  <p class="sub">英语<b>×</b>职场<b>×</b>电影</p>
+
+  <div class="cards">
+    <a class="card" href="《穿普拉达的女王》影子跟读.html">
+      <div class="poster"><img src="poster-prada.png" alt="穿普拉达的女王 海报"></div>
+      <div class="name">穿普拉达的女王</div>
+    </a>
+
+    <div class="card soon" aria-disabled="true">
+      <div class="poster"><span class="soon-txt">更多内容<br>开发中</span></div>
+      <div class="name">敬请期待</div>
+    </div>
+  </div>
+
+  <footer>关注小红书：课后放映</footer>
+</main>
+</body>
+</html>
