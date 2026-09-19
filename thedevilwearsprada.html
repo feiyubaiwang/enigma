@@ -997,6 +997,7 @@ function updateWord(k){
    必须在每次 ensureVideo 重新创建元素后重新绑定事件。 */
 function bindVideoEvents(){
 audio.addEventListener('timeupdate', () => {
+  if(!audio) return;
   const t = audio.currentTime;
   if (Math.abs(t - lastT) < 0.03 && activeIdx >= 0) { updateProg(); return; }
   lastT = t;
@@ -1039,8 +1040,9 @@ audio.addEventListener('timeupdate', () => {
     audio.currentTime = S[activeIdx].start;
   }
 });
-audio.addEventListener('ended', () => { updateWord(-1); setPlayBtn(false); previewing = false; });
+audio.addEventListener('ended', () => { if(!audio) return; updateWord(-1); setPlayBtn(false); previewing = false; });
 audio.addEventListener('play', () => {
+  if(!audio) return;
   /* 视频被隐藏（导航页/初始加载）时，浏览器若因会话恢复而自动播放，立即暂停——
      否则安卓内核会恢复播放位置并在导航页上浮出原生媒体层 */
   const box = document.querySelector('.video-box');
@@ -1050,6 +1052,7 @@ audio.addEventListener('play', () => {
 audio.addEventListener('pause', () => setPlayBtn(false));
 
 audio.addEventListener('error', () => {
+  if(!audio) return;
   if (!audio.currentSrc && !audio.src){ $('#audioMiss').style.display = 'flex'; }
 });
 audio.addEventListener('loadedmetadata', () => { hideVidLoading(); updateProg(); });
