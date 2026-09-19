@@ -324,7 +324,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
 
 <main>
   <div class="left">
-    <div class="video-box"><video id="video" preload="metadata" playsinline></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
+    <div class="video-box"><video id="video" preload="metadata" playsinline style="display:none"></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
     <div class="stage" id="stage">
       <div class="s-meta">
         <span class="badge" id="sIdx">—</span>
@@ -716,14 +716,14 @@ function jumpedToEdge(target){
   const t = audio.currentTime, d = isFinite(audio.duration) ? audio.duration : Infinity;
   return (t < 2 && target > 5) || (isFinite(d) && d - t < 2 && target < d - 10);
 }
-function jumpTo(i, play){
+function jumpTo(i, play, t){
   i = Math.max(0, Math.min(S.length-1, i));
   activeIdx = i;
   updateListActive();
   renderCurrent(i);
-  armSeek(i, !!play, ++seekSeq, 0);
+  armSeek(i, !!play, ++seekSeq, 0, (typeof t === 'number' && isFinite(t)) ? t : null);
 }
-async function armSeek(i, play, seq, attempt){
+async function armSeek(i, play, seq, attempt, t){
   ensureSrc();
   /* 校正显示：异常 EOF 时 timeupdate 可能已把当前句带到末句 */
   if (activeIdx !== i){ activeIdx = i; updateListActive(); renderCurrent(i); }
@@ -738,7 +738,8 @@ async function armSeek(i, play, seq, attempt){
       }
     }
     if (seq !== seekSeq) return;
-    const target = S[i].start;
+    /* 首次定位可用传入的精确时间点（刷新恢复）；重试一律回到句子开头 */
+    const target = (attempt === 0 && t != null) ? t : S[i].start;
     showVidLoading(play ? '定位中…' : '视频加载中…', true);
     try{ audio.currentTime = target; }catch(e){}
     /* 等定位真正落到目标句且有数据（部分浏览器 seeked 触发时数据还没到） */
@@ -992,7 +993,12 @@ audio.addEventListener('timeupdate', () => {
   }
 });
 audio.addEventListener('ended', () => { updateWord(-1); setPlayBtn(false); previewing = false; });
-audio.addEventListener('play', () => setPlayBtn(true));
+audio.addEventListener('play', () => {
+  /* 视频被隐藏（导航页/初始加载）时，浏览器若因会话恢复而自动播放，立即暂停——
+     否则安卓内核会恢复播放位置并在导航页上浮出原生媒体层 */
+  if (audio.style.display === 'none'){ try{ audio.pause(); }catch(e){} return; }
+  setPlayBtn(true);
+});
 audio.addEventListener('pause', () => setPlayBtn(false));
 
 audio.addEventListener('error', () => {
@@ -1122,6 +1128,24 @@ const SEGS = [{"id":0,"name":"报到·踏入Runway","story":"报到","tag":"踏�
 const navView = document.getElementById('navView');
 const navGrid = document.getElementById('navGrid');
 
+/* ---------------- 视图状态持久化：跟读页刷新后仍停留在跟读页 ---------------- */
+const VIEW_KEY = 'pradaViewState';
+function segOfIdx(i){
+  for (let k = 0; k < SEGS.length; k++){
+    if (i >= SEGS[k].firstIdx && i <= SEGS[k].lastIdx) return k;
+  }
+  return null;
+}
+function saveView(patch){
+  try{
+    let st = {};
+    try{ st = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; }catch(e){}
+    Object.assign(st, patch);
+    st.ts = Date.now();
+    localStorage.setItem(VIEW_KEY, JSON.stringify(st));
+  }catch(e){}
+}
+
 
 function segDurText(seg){
   const m = Math.floor(seg.dur / 60), s = Math.round(seg.dur % 60);
@@ -1149,6 +1173,7 @@ function navEnter(si){
   resumeVideo();
   navView.style.display = 'none';
   document.getElementById('audioMiss').style.display = 'none';
+  saveView({view:'read', seg:si, idx:seg.firstIdx, t:seg.start});
   /* 用户手势内触发：既完成懒加载首取，也满足移动端自动播放策略 */
   jumpTo(seg.firstIdx, true);
   window.scrollTo(0, 0);
@@ -1173,6 +1198,7 @@ function navBack(){
   hideCard && hideCard();
   navView.style.display = '';
   navView.scrollTop = 0;
+  saveView({view:'nav'});
 }
 
 document.getElementById('btnNav').addEventListener('click', navBack);
@@ -1187,17 +1213,57 @@ document.getElementById('btnNav').addEventListener('click', navBack);
     });
   }
 })();
-/* 播放推进时（自动/手动跳句）移动端收起抽屉 */
+/* 播放推进时（自动/手动跳句）移动端收起抽屉，并记录当前句（透传所有参数，含刷新恢复的时间点 t） */
 const _origJump = jumpTo;
 jumpTo = function(i, play){
   closeListDrawer();
-  return _origJump(i, play);
+  const sg = segOfIdx(i);
+  const patch = {view:'read', idx:i};
+  if (sg != null) patch.seg = sg;
+  /* 恢复场景传入了精确时间点时原样保留，否则按新句子开头记录 */
+  patch.t = (arguments.length >= 3 && typeof arguments[2] === 'number') ? arguments[2] : S[i].start;
+  saveView(patch);
+  return _origJump.apply(null, arguments);
 };
-/* 离开页面/浏览器返回时暂停播放即可（视频源常驻不卸载） */
-window.addEventListener('pagehide', () => { try{ stopVideo(); }catch(e){} });
+/* 跟读中节流保存播放进度，刷新后可恢复到原句原时间点 */
+let _lastViewSave = 0;
+function saveProgress(force){
+  if (navView.style.display !== 'none') return;   // 导航页不写跟读进度
+  if (activeIdx < 0) return;
+  const now = Date.now();
+  if (!force && now - _lastViewSave < 2500) return;
+  _lastViewSave = now;
+  const sg = segOfIdx(activeIdx);
+  saveView(Object.assign({view:'read', idx:activeIdx, t:audio.currentTime}, sg != null ? {seg:sg} : null));
+}
+audio.addEventListener('timeupdate', () => saveProgress(false));
+audio.addEventListener('pause', () => { try{ saveProgress(true); }catch(e){} });
+/* 离开页面/浏览器返回时暂停播放即可（视频源常驻不卸载），并落盘一次进度 */
+window.addEventListener('pagehide', () => { try{ saveProgress(true); stopVideo(); }catch(e){} });
 renderNav();
 /* SEGS 等全部数据/函数就绪后再初始化（此前 init 过早调用会因 SEGS 未定义而中断） */
 init();
+/* 恢复上次视图：跟读页刷新后仍停留跟读页。
+   浏览器禁止刷新后有声自动播放，故只定位不播放（暂停在原句原时间点），点按播放即可。 */
+(function restoreView(){
+  let st = null;
+  try{ st = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); }catch(e){}
+  if (!st || st.view !== 'read') return;
+  let seg = SEGS[st.seg];
+  if (!seg){
+    const k = segOfIdx(st.idx | 0);
+    if (k == null) return;
+    seg = SEGS[k];
+  }
+  navView.style.display = 'none';
+  document.getElementById('audioMiss').style.display = 'none';
+  resumeVideo();
+  let idx = st.idx | 0;
+  if (!(idx >= seg.firstIdx && idx <= seg.lastIdx)) idx = seg.firstIdx;
+  let tt = (typeof st.t === 'number' && st.t >= seg.start - 0.5 && st.t <= seg.end + 0.5) ? st.t : null;
+  jumpTo(idx, false, tt);
+  window.scrollTo(0, 0);
+})();
 
 </script>
 </body>
