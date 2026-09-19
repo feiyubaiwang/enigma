@@ -1472,6 +1472,14 @@ init();
   let st = null;
   try{ st = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); }catch(e){}
   if (!st || st.view !== 'read'){ destroyVideo(); return; }  // 导航视图：确保无任何 video 残留
+  /* 只有"刷新/浏览器返回"这类同一页面的继续浏览才恢复跟读视图；
+     从主页点卡片、外链、书签等新导航进入时，先进导航页。 */
+  let navType = '';
+  try{
+    const navEntries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+    navType = (navEntries && navEntries[0] && navEntries[0].type) || '';
+  }catch(e){}
+  if (navType === 'navigate'){ destroyVideo(); return; }
   let seg = SEGS[st.seg];
   if (!seg){
     const k = segOfIdx(st.idx | 0);
