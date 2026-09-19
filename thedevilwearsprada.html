@@ -324,7 +324,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
 
 <main>
   <div class="left">
-    <div class="video-box"><video id="video" preload="metadata" playsinline style="display:none"></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
+    <div class="video-box"><video id="video" preload="metadata" playsinline webkit-playsinline x5-playsinline controlsList="nodownload nofullscreen noremoteplayback" disablePictureInPicture style="display:none"></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
     <div class="stage" id="stage">
       <div class="s-meta">
         <span class="badge" id="sIdx">—</span>
@@ -1178,9 +1178,13 @@ function navEnter(si){
   jumpTo(seg.firstIdx, true);
   window.scrollTo(0, 0);
 }
-/* 只暂停、不卸载视频源：src 常驻可让再次进入片段秒开并复用缓冲。
-   但必须 display:none 隐藏 video —— Android Chrome 的视频是原生硬件层，
-   会穿透 z-index:9999 的导航层残留在画面上。 */
+/* 退出全屏：安卓浏览器播放时可能进入原生全屏，返回导航/切后台必须退出，
+   否则原生播放层会穿透浮在所有页面之上 */
+function exitFs(){
+  try{ if (document.exitFullscreen) document.exitFullscreen(); }catch(e){}
+  try{ const v = document.getElementById('video'); if (v && v.webkitExitFullscreen) v.webkitExitFullscreen(); }catch(e){}
+}
+/* 停止播放但保留视频源（暂停时用，避免每次暂停都要重载） */
 function stopVideo(){
   try{ seekSeq++; }catch(e){}
   try{
@@ -1188,13 +1192,29 @@ function stopVideo(){
     setPlayBtn(false);
   }catch(e){}
   pendingSeek = null; hideVidLoading();
+  exitFs();
   try{ const v = document.getElementById('video'); if (v) v.style.display = 'none'; }catch(e){}
+}
+/* 彻底卸载视频源：销毁浏览器创建的原生播放层，防止切后台/杀进程再进时
+   原生层复活穿透导航页。代价是再次进入片段要从 HTTP 缓存重载（通常很快）。 */
+function unloadVideo(){
+  try{ seekSeq++; }catch(e){}
+  try{
+    audio.pause();
+    setPlayBtn(false);
+  }catch(e){}
+  pendingSeek = null; hideVidLoading();
+  exitFs();
+  try{
+    const v = document.getElementById('video');
+    if (v){ v.style.display = 'none'; v.removeAttribute('src'); v.load(); }
+  }catch(e){}
 }
 function resumeVideo(){
   try{ const v = document.getElementById('video'); if (v) v.style.display = ''; }catch(e){}
 }
 function navBack(){
-  stopVideo();
+  unloadVideo();   // 返回导航必须彻底卸载，避免原生层复活
   hideCard && hideCard();
   navView.style.display = '';
   navView.scrollTop = 0;
@@ -1238,8 +1258,24 @@ function saveProgress(force){
 }
 audio.addEventListener('timeupdate', () => saveProgress(false));
 audio.addEventListener('pause', () => { try{ saveProgress(true); }catch(e){} });
-/* 离开页面/浏览器返回时暂停播放即可（视频源常驻不卸载），并落盘一次进度 */
-window.addEventListener('pagehide', () => { try{ saveProgress(true); stopVideo(); }catch(e){} });
+/* 页面隐藏/关闭：导航页彻底卸载（防原生层复活），跟读页只暂停保留源（回来可秒续） */
+function onHide(){
+  try{ saveProgress(true); }catch(e){}
+  if (navView.style.display !== 'none'){ unloadVideo(); }
+  else { stopVideo(); }
+}
+window.addEventListener('pagehide', onHide);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden'){ onHide(); }
+  else {
+    if (navView.style.display !== 'none'){ unloadVideo(); }
+    else { try{ resumeVideo(); }catch(e){} }
+  }
+});
+/* iOS/Safari 从 bfcache 恢复时触发 pageshow，导航页强制卸载视频 */
+window.addEventListener('pageshow', () => {
+  if (navView.style.display !== 'none'){ unloadVideo(); }
+});
 renderNav();
 /* SEGS 等全部数据/函数就绪后再初始化（此前 init 过早调用会因 SEGS 未定义而中断） */
 init();
