@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -13,12 +13,14 @@
 <meta property="og:title" content="《穿普拉达的女王》电影英语跟读 · 49个微片段1374句台词｜课后放映">
 <meta property="og:description" content="49 个微片段、1374 句中英台词，逐句精读、倍速播放、影子跟读与录音对照。">
 <meta property="og:url" content="https://enigma.feiyubaiwang.com/thedevilwearsprada.html">
-<meta property="og:image" content="https://enigma.feiyubaiwang.com/poster-prada.png">
+<meta property="og:image" content="https://enigma.feiyubaiwang.com/poster-prada.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="《穿普拉达的女王》电影英语跟读｜课后放映">
 <meta name="twitter:description" content="49 个微片段、1374 句中英台词，逐句精读与影子跟读。">
-<meta name="twitter:image" content="https://enigma.feiyubaiwang.com/poster-prada.png">
+<meta name="twitter:image" content="https://enigma.feiyubaiwang.com/poster-prada.jpg">
 <link rel="icon" type="image/png" href="favicon.png">
+<link rel="preconnect" href="https://thedevilwearsprada.oss-cn-shanghai.aliyuncs.com">
+<link rel="dns-prefetch" href="https://thedevilwearsprada.oss-cn-shanghai.aliyuncs.com">
 <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"></noscript>
 <style>
   :root{
@@ -440,6 +442,7 @@ function ensureVideo(){
 }
 function destroyVideo(){
   try{ seekSeq++; }catch(e){}
+  try{ if (pvRaf){ cancelAnimationFrame(pvRaf); pvRaf = 0; } }catch(e){}
   try{ if (audio){ audio.pause(); audio.removeAttribute('src'); audio.load(); } }catch(e){}
   try{ setPlayBtn(false); }catch(e){}
   pendingSeek = null; hideVidLoading();
@@ -463,6 +466,7 @@ let activeIdx = -1;
 let rowEls = [];
 let lastT = -1;
 let previewing = false;  // 原声预览模式（句末停）
+let pvRaf = 0;           // 预览/对照模式的 rAF 断句监测句柄
 let compareMode = false; // 对照播放中
 let curK = -1;   // 当前高亮词序号（单词级跟读高亮）
 let curWC = 0;   // 当前句渲染词数
@@ -892,7 +896,11 @@ function playAudio(){
   }
   audio.play().then(()=>{ setPlayBtn(true); }).catch(()=>{ showVidLoading('点按屏幕继续播放', true); });
 }
-function pauseAudio(){ if(!audio) ensureVideo(); audio.pause(); setPlayBtn(false); }
+function pauseAudio(){
+  try{ if (pvRaf){ cancelAnimationFrame(pvRaf); pvRaf = 0; } }catch(e){}
+  if(!audio) return;
+  audio.pause(); setPlayBtn(false);
+}
 var ICON_PLAY = '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
 var ICON_PAUSE = '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><rect x="6" y="4" width="4.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.2"/></svg>';
 function setPlayBtn(on){ $('#btnPlay').innerHTML = on ? ICON_PAUSE : ICON_PLAY; }
@@ -931,7 +939,7 @@ modeBtn['both'].classList.add('on');
 /* 进度条 */
 const prog = $('#prog');
 function updateProg(){
-  if(!audio) ensureVideo();
+  if(!audio){ $('#timeCur').textContent = '00:00 / ' + fmt(DATA.meta.movie_sec); return; }
   const pct = audio.duration ? audio.currentTime / audio.duration * 100 : 0;
   $('#progFill').style.width = pct + '%';
   $('#progKnob').style.left = pct + '%';
@@ -996,6 +1004,26 @@ function updateWord(k){
    由于导航页时 video 元素被彻底从 DOM 移除（destroyVideo），
    必须在每次 ensureVideo 重新创建元素后重新绑定事件。 */
 function bindVideoEvents(){
+/* rAF 级断句监测：timeupdate 事件粒度约 250ms（部分国产浏览器可达 1s），
+   预览/对照模式下用 requestAnimationFrame 逐帧盯 currentTime，
+   到句末立即停原声切录音，把"原声播完→录音响起"的间隔压到接近零 */
+function previewTick(){
+  if (!previewing || !audio){ pvRaf = 0; return; }
+  const s = S[activeIdx];
+  if (s && audio.currentTime >= s.end - 0.02){
+    pvRaf = 0;
+    updateWord(-1);
+    pauseAudio(); previewing = false;
+    if (compareQueue === 1){ compareQueue = 2; playMine(); }
+    return;
+  }
+  if (audio.paused){ pvRaf = 0; return; }
+  pvRaf = requestAnimationFrame(previewTick);
+}
+function startPreviewWatch(){
+  try{ if (pvRaf) cancelAnimationFrame(pvRaf); }catch(e){}
+  pvRaf = requestAnimationFrame(previewTick);
+}
 audio.addEventListener('timeupdate', () => {
   if(!audio) return;
   const t = audio.currentTime;
@@ -1026,14 +1054,11 @@ audio.addEventListener('timeupdate', () => {
     audio.currentTime = S[activeIdx + 1].start;
     return;
   }
-  // 原声预览到句末停
+  // 原声预览到句末停（rAF watcher 已精准处理，这里作兜底，不再加人为延迟）
   if (previewing && activeIdx >= 0 && t >= S[activeIdx].end - 0.02){
     updateWord(-1);
     pauseAudio(); previewing = false;
-    if (compareQueue === 1){
-      compareQueue = 2;
-      setTimeout(() => { if (recURL()){ playMine(); } }, 500);
-    }
+    if (compareQueue === 1){ compareQueue = 2; playMine(); }
   }
   // 重复本句
   if (REPEAT && activeIdx >= 0 && t >= S[activeIdx].end - 0.02 && !previewing){
@@ -1048,6 +1073,7 @@ audio.addEventListener('play', () => {
   const box = document.querySelector('.video-box');
   if (box && box.classList.contains('video-hidden')){ try{ audio.pause(); }catch(e){} return; }
   setPlayBtn(true);
+  if (previewing) startPreviewWatch();   // 预览/对照模式：启动 rAF 精准断句
 });
 audio.addEventListener('pause', () => setPlayBtn(false));
 
@@ -1088,12 +1114,28 @@ $('#btnPlayOrig').addEventListener('click', () => {
   armSeek(activeIdx, true, ++seekSeq, 0);
 });
 $('#btnPlayMine').addEventListener('click', playMine);
+/* 预载跟读录音：对照模式启动时立即创建 Audio 并预取解码，
+   原声一停就能无缝切到录音，消除切换时的解码/加载等待 */
+let mineAudioPre = null;
+function preloadMine(){
+  const u = recURL();
+  if (!u) return;
+  if (mineAudioPre){ try{ mineAudioPre.pause(); }catch(e){} }
+  mineAudioPre = new Audio(u);
+  mineAudioPre.preload = 'auto';
+  try{ mineAudioPre.load(); }catch(e){}
+}
 function playMine(){
   const u = recURL();
   if (!u) return;
   pauseAudio();
-  const a = new Audio(u);
-  a.play();
+  if (mineAudioPre && mineAudioPre.src === u){
+    try{ mineAudioPre.currentTime = 0; }catch(e){}
+    mineAudioPre.play().catch(()=>{});
+  } else {
+    mineAudioPre = new Audio(u);
+    mineAudioPre.play().catch(()=>{});
+  }
 }
 $('#btnCompare').addEventListener('click', () => {
   if (activeIdx < 0 || !recURL()) return;
@@ -1101,6 +1143,7 @@ $('#btnCompare').addEventListener('click', () => {
   if(!audio) ensureVideo();
   audio.playbackRate = 1.0;
   previewing = true;
+  preloadMine();   // 原声播放期间就把录音 Audio 建好并解码，句末零等待切换
   armSeek(activeIdx, true, ++seekSeq, 0);
 });
 
@@ -1163,9 +1206,11 @@ function init(){
   updateListActive();
   $('#btnPlayOrig').disabled = false;   // 原声预览始终可用
   $('#btnSkipGap').classList.toggle('on', SKIP_GAP);
-  ensureVideo();          // 导航页也要创建 video 元素（隐藏态）以预加载元数据
-  tryLoadAudio();
-  // 预加载音频元数据后显示总时长（监听器已在 bindVideoEvents 中统一绑定）
+  /* 关键：页面加载时绝不创建 video 元素、绝不设置 src。
+     安卓浏览器杀进程重开恢复会话时，会依据 DOM 中残留的 video+src
+     复原原生媒体层（带播放位置与原生控件），浮在导航页上方。
+     HTML 无 video + JS 不预建 ⇒ 会话恢复时根本没有媒体层可复原。
+     video 只在用户进入跟读页（resumeVideo→ensureVideo）时动态创建。 */
   updateProg();
   setInterval(() => { if (audio && audio.paused && !audio.ended) updateProg(); }, 1000);
 }
@@ -1217,7 +1262,11 @@ function renderNav(){
     const b = document.createElement('button');
     b.className = 'nav-card';
     b.setAttribute('data-si', seg.id);
-    b.innerHTML = '<span class="nc-shot"><img src="assets/shots/seg' + String(seg.id).padStart(2,'0') + '.jpg" alt="" loading="lazy"></span>' + '<span class="nc-top"><span class="nc-no">' + String(seg.id+1).padStart(2,'0') + '</span><span class="nc-tag">' + seg.tag + '</span></span>' +
+    /* 首屏前2张立即高优加载，其余懒加载+异步解码：首开秒出首屏、滚动顺畅 */
+    const imgAttr = seg.id < 2
+      ? ' loading="eager" fetchpriority="high" decoding="async"'
+      : ' loading="lazy" decoding="async"';
+    b.innerHTML = '<span class="nc-shot"><img src="assets/shots/seg' + String(seg.id).padStart(2,'0') + '.jpg" alt=""' + imgAttr + '></span>' + '<span class="nc-top"><span class="nc-no">' + String(seg.id+1).padStart(2,'0') + '</span><span class="nc-tag">' + seg.tag + '</span></span>' +
       '<span class="nc-name">' + seg.story + '</span>' +
       '<span class="nc-meta"><b>' + seg.t0 + ' – ' + seg.t1 + '</b><span>约' + segDurText(seg) + '</span><span>' + seg.count + '句</span></span>';
     b.addEventListener('click', function(){ navEnter(seg.id); });
@@ -1355,7 +1404,7 @@ init();
 (function restoreView(){
   let st = null;
   try{ st = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); }catch(e){}
-  if (!st || st.view !== 'read') return;
+  if (!st || st.view !== 'read'){ destroyVideo(); return; }  // 导航视图：确保无任何 video 残留
   let seg = SEGS[st.seg];
   if (!seg){
     const k = segOfIdx(st.idx | 0);
