@@ -16,5 +16,8 @@ _shots/
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# 本地 Trae 技能（含搜索引擎推送 token，不入库）
+.trae/
 The Devil Wears Prada 2006 faststart.mp4
 _jump_test.html
