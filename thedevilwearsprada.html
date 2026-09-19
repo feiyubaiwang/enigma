@@ -432,6 +432,7 @@ function ensureVideo(){
     v.setAttribute('playsinline','');
     v.setAttribute('webkit-playsinline','');
     v.setAttribute('x5-playsinline','');
+    v.setAttribute('x5-video-player-type','h5');
     v.setAttribute('controlsList','nodownload nofullscreen noremoteplayback');
     v.setAttribute('disablePictureInPicture','');
     box.insertBefore(v, box.firstChild);
@@ -452,8 +453,31 @@ function destroyVideo(){
     const v = document.getElementById('video');
     if (v && v.parentNode) v.parentNode.removeChild(v);
   }catch(e){}
+  purgeAllVideos();
   audio = null;
   drawerVideoDetached = false; drawerWasPlaying = false;
+}
+/* 兜底清除页面上一切 video 元素（不限于本页创建的 #video）：
+   部分浏览器杀进程重开恢复会话时，会自行向 DOM 注入带上次进度的
+   video 元素/原生播放层（id 与本页不同，之前的定点删除会漏掉）。
+   先清 src 触发 emptied 让浏览器媒体服务释放，再逐个移除；
+   同时尽量解除媒体会话记录，最大限度避免原生播放层在导航页复活。 */
+function purgeAllVideos(){
+  try{
+    const vs = document.querySelectorAll('video');
+    for (let i = 0; i < vs.length; i++){
+      const v = vs[i];
+      try{ v.pause(); }catch(e){}
+      try{ v.removeAttribute('src'); v.load(); }catch(e){}
+      try{ if (v.parentNode) v.parentNode.removeChild(v); }catch(e){}
+    }
+    try{
+      if (navigator.mediaSession){
+        try{ navigator.mediaSession.metadata = null; }catch(e){}
+        try{ navigator.mediaSession.playbackState = 'none'; }catch(e){}
+      }
+    }catch(e){}
+  }catch(e){}
 }
 const listEl = $('#list');
 const modeBtn = {zh:$('#segMode').children[0], en:$('#segMode').children[1], both:$('#segMode').children[2], block:$('#segMode').children[3]};
@@ -1202,6 +1226,11 @@ document.addEventListener('keydown', ev => {
 
 /* ---------------- 初始化 ---------------- */
 function init(){
+  /* 页面加载即兜底清一次 video（含浏览器会话恢复时自行注入的元素）。
+     导航视图下再延时补清两次，对抗异步注入的原生播放层。 */
+  purgeAllVideos();
+  setTimeout(function(){ try{ if (navView && navView.style.display !== 'none') purgeAllVideos(); }catch(e){} }, 1500);
+  setTimeout(function(){ try{ if (navView && navView.style.display !== 'none') purgeAllVideos(); }catch(e){} }, 4000);
   buildList();
   renderCurrent(0);
   activeIdx = 0;
@@ -1458,6 +1487,24 @@ init();
   jumpTo(idx, false, tt);
   window.scrollTo(0, 0);
 })();
+
+/* 会话恢复兜底：bfcache/快照恢复页面时（脚本不重跑），若当前在导航视图
+   则清掉浏览器可能复活的 video 播放层；切回前台时同样补清一次。 */
+window.addEventListener('pageshow', function(ev){
+  try{
+    if (!ev.persisted) return;
+    let st = null;
+    try{ st = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); }catch(e){}
+    if (!st || st.view !== 'read') purgeAllVideos();
+  }catch(e){}
+});
+document.addEventListener('visibilitychange', function(){
+  try{
+    if (document.visibilityState === 'visible' && navView && navView.style.display !== 'none'){
+      purgeAllVideos();
+    }
+  }catch(e){}
+});
 
 </script>
 </body>
