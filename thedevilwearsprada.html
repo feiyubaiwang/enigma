@@ -453,6 +453,7 @@ function destroyVideo(){
     if (v && v.parentNode) v.parentNode.removeChild(v);
   }catch(e){}
   audio = null;
+  drawerVideoDetached = false; drawerWasPlaying = false;
 }
 const listEl = $('#list');
 const modeBtn = {zh:$('#segMode').children[0], en:$('#segMode').children[1], both:$('#segMode').children[2], block:$('#segMode').children[3]};
@@ -844,6 +845,7 @@ async function playAndVerify(target, seq){
   return true;
 }
 function closeListDrawer(){
+  if (drawerVideoDetached) reattachVideoFromDrawer();
   if (window.innerWidth > 820) return;
   const dr = document.querySelector('.right');
   const dt = document.getElementById('drawerToggle');
@@ -1337,6 +1339,7 @@ function resumeVideo(){
 }
 function navBack(){
   destroyVideo();   // 返回导航必须彻底销毁 video DOM，避免原生层复活
+  closeListDrawer(); // 若台词抽屉开着：收起并复位视频摘除状态
   hideCard && hideCard();
   navView.style.display = '';
   navView.scrollTop = 0;
@@ -1345,6 +1348,38 @@ function navBack(){
 
 document.getElementById('btnNav').addEventListener('click', navBack);
 /* 台词列表抽屉开关 */
+/* 安卓浏览器的原生视频渲染层不受 z-index 控制，会穿透盖住抽屉内容。
+   抽屉打开时把 video 元素从 DOM 摘除（原生层随之消失），元素本体由
+   audio 引用持有，src/缓冲/播放进度全部保留；关闭抽屉时原样插回并
+   恢复播放。桌面浏览器 z-index 正常，无需摘除。 */
+let drawerVideoDetached = false;
+let drawerWasPlaying = false;
+function detachVideoForDrawer(){
+  if (drawerVideoDetached || !audio) return;
+  const v = document.getElementById('video');
+  if (!v) return;
+  drawerVideoDetached = true;
+  drawerWasPlaying = !audio.paused;
+  try{ audio.pause(); }catch(e){}
+  setPlayBtn(false);
+  exitFs();
+  try{ if (v.parentNode) v.parentNode.removeChild(v); }catch(e){}
+  hideVideoBox();
+}
+function reattachVideoFromDrawer(){
+  if (!drawerVideoDetached) return;
+  drawerVideoDetached = false;
+  const box = document.querySelector('.video-box');
+  const v = audio;
+  if (v && box && !document.getElementById('video')){
+    try{ box.insertBefore(v, box.firstChild); }catch(e){}
+  }
+  showVideoBox();
+  if (drawerWasPlaying && audio && audio.paused){
+    try{ audio.play().then(function(){ setPlayBtn(true); }).catch(function(){}); }catch(e){}
+  }
+  drawerWasPlaying = false;
+}
 (function(){
   const dt = document.getElementById('drawerToggle');
   const dr = document.querySelector('.right');
@@ -1352,6 +1387,9 @@ document.getElementById('btnNav').addEventListener('click', navBack);
     dt.addEventListener('click', function(){
       const open = dr.classList.toggle('open');
       dt.classList.toggle('open', open);
+      if (window.innerWidth <= 900){
+        if (open) detachVideoForDrawer(); else reattachVideoFromDrawer();
+      }
     });
   }
 })();
