@@ -102,6 +102,10 @@
   .vid-loading.tappable{cursor:pointer;background:rgba(0,0,0,.68)}
   .video-box video{display:block;height:36vh;max-width:100%;aspect-ratio:2.35/1;object-fit:contain;background:#000}
   @media (max-width:900px){.video-box video{height:26vh}}
+  /* 导航页彻底隐藏视频：多重保险应对国产安卓浏览器会话恢复时还原内联样式。
+     连 .video-box 一起压平，避免黑框/占位区穿透到导航页。 */
+  .video-box.video-hidden{display:none!important;height:0!important;overflow:hidden!important;border:0!important}
+  .video-box.video-hidden video{display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;width:0!important}
 
   .s-meta{font-size:12px; color:var(--ink-3); margin-bottom:14px; display:flex; gap:14px; align-items:center}
   .s-meta .badge{background:var(--primary-soft); color:var(--primary); padding:2px 10px; border-radius:999px; font-weight:600}
@@ -324,7 +328,7 @@ radial-gradient(900px 600px at -10% 110%, rgba(0,0,0,.28), transparent 55%),
 
 <main>
   <div class="left">
-    <div class="video-box"><video id="video" preload="metadata" playsinline webkit-playsinline x5-playsinline controlsList="nodownload nofullscreen noremoteplayback" disablePictureInPicture style="display:none"></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
+    <div class="video-box video-hidden"><video id="video" preload="metadata" playsinline webkit-playsinline x5-playsinline controlsList="nodownload nofullscreen noremoteplayback" disablePictureInPicture></video><div id="vidLoading" class="vid-loading" style="display:none"><span id="vidLoadingTxt">视频加载中…</span></div></div>
     <div class="stage" id="stage">
       <div class="s-meta">
         <span class="badge" id="sIdx">—</span>
@@ -996,7 +1000,8 @@ audio.addEventListener('ended', () => { updateWord(-1); setPlayBtn(false); previ
 audio.addEventListener('play', () => {
   /* 视频被隐藏（导航页/初始加载）时，浏览器若因会话恢复而自动播放，立即暂停——
      否则安卓内核会恢复播放位置并在导航页上浮出原生媒体层 */
-  if (audio.style.display === 'none'){ try{ audio.pause(); }catch(e){} return; }
+  const box = document.querySelector('.video-box');
+  if (box && box.classList.contains('video-hidden')){ try{ audio.pause(); }catch(e){} return; }
   setPlayBtn(true);
 });
 audio.addEventListener('pause', () => setPlayBtn(false));
@@ -1184,6 +1189,20 @@ function exitFs(){
   try{ if (document.exitFullscreen) document.exitFullscreen(); }catch(e){}
   try{ const v = document.getElementById('video'); if (v && v.webkitExitFullscreen) v.webkitExitFullscreen(); }catch(e){}
 }
+/* 用 class 而非内联 style 隐藏：国产安卓浏览器会话恢复时会还原内联 style，
+   但 CSS !important 规则压得住。连 .video-box 一起隐藏，避免黑框穿透。 */
+function hideVideoBox(){
+  try{
+    const box = document.querySelector('.video-box');
+    if (box) box.classList.add('video-hidden');
+  }catch(e){}
+}
+function showVideoBox(){
+  try{
+    const box = document.querySelector('.video-box');
+    if (box) box.classList.remove('video-hidden');
+  }catch(e){}
+}
 /* 停止播放但保留视频源（暂停时用，避免每次暂停都要重载） */
 function stopVideo(){
   try{ seekSeq++; }catch(e){}
@@ -1193,7 +1212,7 @@ function stopVideo(){
   }catch(e){}
   pendingSeek = null; hideVidLoading();
   exitFs();
-  try{ const v = document.getElementById('video'); if (v) v.style.display = 'none'; }catch(e){}
+  hideVideoBox();
 }
 /* 彻底卸载视频源：销毁浏览器创建的原生播放层，防止切后台/杀进程再进时
    原生层复活穿透导航页。代价是再次进入片段要从 HTTP 缓存重载（通常很快）。 */
@@ -1205,13 +1224,14 @@ function unloadVideo(){
   }catch(e){}
   pendingSeek = null; hideVidLoading();
   exitFs();
+  hideVideoBox();
   try{
     const v = document.getElementById('video');
-    if (v){ v.style.display = 'none'; v.removeAttribute('src'); v.load(); }
+    if (v){ v.removeAttribute('src'); v.load(); }
   }catch(e){}
 }
 function resumeVideo(){
-  try{ const v = document.getElementById('video'); if (v) v.style.display = ''; }catch(e){}
+  showVideoBox();
 }
 function navBack(){
   unloadVideo();   // 返回导航必须彻底卸载，避免原生层复活
